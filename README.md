@@ -1,5 +1,5 @@
-Building a RAG based of 10 pdfs, where each pdf contains an info about AWS Service.
-Used huggingface for creating embedding
-FAISS as vector db
-Ollama orca-mini as LLM
-Used RecursiveCharacterTextSplitter strategy for Chunking
+- Building a RAG based of 10 pdfs, where each pdf contains an info about AWS Service.
+- Used huggingface for creating embedding
+- FAISS as vector db
+- Ollama orca-mini as LLM
+- Used RecursiveCharacterTextSplitter strategy for Chunking
