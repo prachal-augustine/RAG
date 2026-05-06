@@ -4,16 +4,16 @@ from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.llms import Ollama 
 
 
 def search_data_files(path, path_of_files = []):
-    print(path)
+    # print(path)
     for file in os.scandir(path):
         if file.is_file():
             path_of_files.append(file.path)
-    print(path_of_files)
+    # print(path_of_files)
     return path_of_files
 
 def read_data_files(path_of_files):
@@ -47,7 +47,7 @@ def pdfs_chunk_dict_to_doc(pdfs_split_text):
                 }
             )
             documents.append(doc)
-    print(f"Total documents: {len(documents)}")
+    # print(f"Total documents: {len(documents)}")
     return documents
 
 def embed_index_and_store(documents):
@@ -56,7 +56,7 @@ def embed_index_and_store(documents):
 
     if os.path.exists(index_path):
         try:
-            print("Loading existing index")
+            # print("Loading existing index")
             db = FAISS.load_local(
                 index_path,
                 embeddings,
@@ -67,46 +67,56 @@ def embed_index_and_store(documents):
             db.index.search(__import__("numpy").array([test_vec], dtype="float32"), 1)
             return db
         except Exception as e:
-            print(f"Index incompatible ({e}), recreating...")
+            # print(f"Index incompatible ({e}), recreating...")
             shutil.rmtree(index_path)
     
     # Create new index
-    print("Creating new index...")
+    # print("Creating new index...")
     os.makedirs(index_path, exist_ok=True)
     vector_db = FAISS.from_documents(documents, embeddings)
     vector_db.save_local(index_path)
-    print("Done")
+    # print("Done")
     return vector_db
 
-def add_context_to_prompt(query, vector_db, top_k=5, SCORE_THRESHOLD=0.5):
-    results = vector_db.similarity_search_with_relevance_scores(query, k=top_k)
-    context = ""
+def rewrite_query(query, history):
+    llm = Ollama(model="orca-mini", temperature=0)
+    rewrite_prompt = f"""Given the conversation history below, rewrite the latest user question as a standalone, self-contained question.
+Only return the rewritten question, nothing else.
+
+Conversation history:
+{history}
+
+Latest question: {query}
+Standalone question:"""
+    return llm.invoke(rewrite_prompt).strip()
+
+
+def add_context_to_prompt(query, vector_db, memory=None, top_k=5, SCORE_THRESHOLD=0.5):
+    search_query = rewrite_query(query, memory) if memory else query
+
+    results = vector_db.similarity_search_with_relevance_scores(search_query, k=top_k)
     filtered = []
-    system_prompt = """You are a concise information assistant. 
+    system_prompt = """You are a concise information assistant.
     Answer questions directly without any preamble or reference to sources.
     Do not say 'The answer is', 'According to', or 'Based on'.
     Just provide the answer."""
     for doc, score in results:
         if score >= SCORE_THRESHOLD:
-            # source = f"Source: {doc.metadata['source']}"
-            # chunk_id = f"Chunk ID: {doc.metadata['chunk_id']}"
-            # content = f"Content: {doc.page_content}"
-            # combined = "\n\n".join([source, chunk_id, content])
-            combined = doc.page_content
-            filtered.append(combined)
-    print(f"Filtered results: {len(filtered)}")
+            filtered.append(doc.page_content)
     if not filtered:
         return None
-    else:
-        context = "\n\n".join(filtered)
-        prompt = f"""{system_prompt}
+
+    context = "\n\n".join(filtered)
+    history_text = f"\n\n        Conversation so far:\n        {memory}" if memory else ""
+
+    prompt = f"""{system_prompt}
 
         Context:
-        {context}
+        {context}{history_text}
 
-        Question: {query}
+        User: {query}
         Answer:"""
-        return prompt
+    return prompt
 
 def response_generation(prompt):
     if not prompt:
@@ -116,14 +126,3 @@ def response_generation(prompt):
     return response
 
 
-path = r"C:\Users\prach\RAG\data"
-path_of_files = search_data_files(path)
-data_text_dict = read_data_files(path_of_files)
-pdfs_split_text = character_text_splitter(data_text_dict)
-pdfs_documents = pdfs_chunk_dict_to_doc(pdfs_split_text)
-vector_db = embed_index_and_store(pdfs_documents)
-
-query = "Why are the advantages of AWS Lambda?"
-augumented_prompt = add_context_to_prompt(query, vector_db)
-response = response_generation(augumented_prompt)
-print(response)
