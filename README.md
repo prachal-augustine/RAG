@@ -3,3 +3,5 @@
 - FAISS as vector db
 - Ollama orca-mini as LLM
 - Used RecursiveCharacterTextSplitter strategy for Chunking
+- Used CLI for interaction with RAG
+- Using Langchain converse memory buffer for chaining conversation and better context memory
